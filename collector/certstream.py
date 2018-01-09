@@ -39,18 +39,26 @@ class MyClientProtocol(WebSocketClientProtocol):
 
     def onClose(self, wasClean, code, reason):
         print("WebSocket connection closed: {0}".format(reason))
+        self.factory.loop.stop()
 
 
 def listen_for_events(callback):
-    factory = WebSocketClientFactory(u"wss://certstream.calidog.io")
-    factory.protocol = MyClientProtocol
-    factory.callback = callback
+    try:
+        while True:
+            print("Attempting to open websocket connection")
+            factory = WebSocketClientFactory(u"wss://certstream.calidog.io")
+            factory.setProtocolOptions(openHandshakeTimeout=10, tcpNoDelay=True)
+            factory.protocol = MyClientProtocol
+            factory.callback = callback
 
-    ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-    ssl_context.check_hostname = True
+            ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            ssl_context.check_hostname = True
 
-    loop = asyncio.get_event_loop()
-    coro = loop.create_connection(factory, 'certstream.calidog.io', 443, ssl=ssl_context)
-    loop.run_until_complete(coro)
-    loop.run_forever()
-    loop.close()
+            loop = asyncio.get_event_loop()
+            coro = loop.create_connection(factory, 'certstream.calidog.io', 443, ssl=ssl_context)
+            loop.run_until_complete(coro)
+            loop.run_forever()
+    except KeyboardInterrupt:
+        loop.stop()
+        loop.close()
+

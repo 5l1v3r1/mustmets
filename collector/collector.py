@@ -19,70 +19,40 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import certstream
-import pymysql
-import pymysql.cursors
-import config
+from database_access import MysqlDB
 import ujson
 import asn1crypto.x509
 import base64
+from datetime import datetime
 
 
-class MysqlDB:
-    _conn = None
-
-    def __init__(self):
-        self._conn = self.connect()
-        self.create_db()
-
-    def query(self, sql, params):
-        try:
-            cur = self._conn.cursor()
-            cur.execute(sql, params)
-        except (AttributeError, pymysql.OperationalError):
-            self._conn = self.connect()
-            cur = self._conn.cursor()
-            cur.execute(sql, params)
-        return cur
-
-    @staticmethod
-    def connect():
-        return pymysql.connect(host=config.SQL_HOST,
-                               user=config.SQL_USER,
-                               password=config.SQL_PASSWORD,
-                               db=config.SQL_DB,
-                               charset='utf8mb4',
-                               cursorclass=pymysql.cursors.DictCursor)
-
-    def create_db(self):
-        sql = """
-                CREATE TABLE IF NOT EXISTS `certs` (
-                    `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `certdata` JSON NOT NULL,
-                    `added` DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-              """
-        cur = self.query(sql, ())
-        self._conn.commit()
-        cur.close()
-
-    def insert_cert(self, data):
-        sql = """
-            INSERT INTO `certs` (`certdata`) VALUES (%s);
-        """
-        params = (data,)
-        cur = self.query(sql, params)
-        self._conn.commit()
-        cur.close()
-
-    def parse_cert(self, data):
-        streamdata = ujson.loads(data)
-        if 'data' in streamdata:
-            cert = base64.b64decode(streamdata['data']['leaf_cert']['as_der'].encode('utf-8'))
-            cert = asn1crypto.x509.Certificate.load(cert)
-            print(cert)
-
+def parse_cert(data):
+    streamdata = ujson.loads(data)
+    if 'data' in streamdata:
+        cert = base64.b64decode(streamdata['data']['leaf_cert']['as_der'].encode('utf-8'))
+        cert = asn1crypto.x509.Certificate.load(cert)
+        db.insert_cert(domain_names=streamdata['data']['leaf_cert']['all_domains'],
+                       cert_issuer=cert.issuer.human_friendly,
+                       cert_notbefore=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_before']),
+                       cert_notafter=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_after']),
+                       cert_seen=datetime.fromtimestamp(streamdata['data']['seen']),
+                       cert_source=streamdata['data']['source']['url'],
+                       cert_serial=streamdata['data']['leaf_cert']['serial_number'],
+                       cert_fingerprint=streamdata['data']['leaf_cert']['fingerprint'],
+                       cert_allowed_digitalsignature=True if 'digital_signature' in cert.key_usage_value.native else False,
+                       cert_allowed_nonrepudiation=True if 'non_repudiation' in cert.key_usage_value.native else False,
+                       cert_allowed_keyencipherment=True if 'key_encipherment' in cert.key_usage_value.native else False,
+                       cert_allowed_dataencipherment=True if 'data_encipherment' in cert.key_usage_value.native else False,
+                       cert_allowed_keyagreement=True if 'key_agreement' in cert.key_usage_value.native else False,
+                       cert_allowed_keycertsign=True if 'key_cert_sign' in cert.key_usage_value.native else False,
+                       cert_allowed_crlsign=True if 'crl_sign' in cert.key_usage_value.native else False,
+                       cert_allowed_encipheronly=True if 'encipher_only' in cert.key_usage_value.native else False,
+                       cert_allowed_decipheronly=True if 'decipher_only' in cert.key_usage_value.native else False,
+                       cert_signaturealgorithm=cert.signature_algo,
+                       cert_algorithm=cert.public_key.algorithm,
+                       cert_algorthm_bit_size=cert.public_key.bit_size
+                       )
 
 db = MysqlDB()
 
-certstream.listen_for_events(db.parse_cert)
+certstream.listen_for_events(parse_cert)
