@@ -31,27 +31,28 @@ def parse_cert(data):
     if 'data' in streamdata:
         cert = base64.b64decode(streamdata['data']['leaf_cert']['as_der'].encode('utf-8'))
         cert = asn1crypto.x509.Certificate.load(cert)
-        db.insert_cert(domain_names=streamdata['data']['leaf_cert']['all_domains'],
-                       cert_issuer=cert.issuer.human_friendly,
-                       cert_notbefore=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_before']),
-                       cert_notafter=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_after']),
-                       cert_seen=datetime.fromtimestamp(streamdata['data']['seen']),
-                       cert_source=streamdata['data']['source']['url'],
-                       cert_serial=streamdata['data']['leaf_cert']['serial_number'],
-                       cert_fingerprint=streamdata['data']['leaf_cert']['fingerprint'],
-                       cert_allowed_digitalsignature=True if 'digital_signature' in cert.key_usage_value.native else False,
-                       cert_allowed_nonrepudiation=True if 'non_repudiation' in cert.key_usage_value.native else False,
-                       cert_allowed_keyencipherment=True if 'key_encipherment' in cert.key_usage_value.native else False,
-                       cert_allowed_dataencipherment=True if 'data_encipherment' in cert.key_usage_value.native else False,
-                       cert_allowed_keyagreement=True if 'key_agreement' in cert.key_usage_value.native else False,
-                       cert_allowed_keycertsign=True if 'key_cert_sign' in cert.key_usage_value.native else False,
-                       cert_allowed_crlsign=True if 'crl_sign' in cert.key_usage_value.native else False,
-                       cert_allowed_encipheronly=True if 'encipher_only' in cert.key_usage_value.native else False,
-                       cert_allowed_decipheronly=True if 'decipher_only' in cert.key_usage_value.native else False,
-                       cert_signaturealgorithm=cert.signature_algo,
-                       cert_algorithm=cert.public_key.algorithm,
-                       cert_algorthm_bit_size=cert.public_key.bit_size
-                       )
+        if cert is not None and cert.key_usage_value is not None:
+            db.insert_cert(domain_names=streamdata['data']['leaf_cert']['all_domains'],
+                           cert_issuer=cert.issuer.human_friendly,
+                           cert_notbefore=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_before']),
+                           cert_notafter=datetime.fromtimestamp(streamdata['data']['leaf_cert']['not_after']),
+                           cert_seen=datetime.fromtimestamp(streamdata['data']['seen']),
+                           cert_source=streamdata['data']['source']['url'],
+                           cert_serial=streamdata['data']['leaf_cert']['serial_number'],
+                           cert_fingerprint=streamdata['data']['leaf_cert']['fingerprint'],
+                           cert_allowed_digitalsignature=True if 'digital_signature' in cert.key_usage_value.native else False,
+                           cert_allowed_nonrepudiation=True if 'non_repudiation' in cert.key_usage_value.native else False,
+                           cert_allowed_keyencipherment=True if 'key_encipherment' in cert.key_usage_value.native else False,
+                           cert_allowed_dataencipherment=True if 'data_encipherment' in cert.key_usage_value.native else False,
+                           cert_allowed_keyagreement=True if 'key_agreement' in cert.key_usage_value.native else False,
+                           cert_allowed_keycertsign=True if 'key_cert_sign' in cert.key_usage_value.native else False,
+                           cert_allowed_crlsign=True if 'crl_sign' in cert.key_usage_value.native else False,
+                           cert_allowed_encipheronly=True if 'encipher_only' in cert.key_usage_value.native else False,
+                           cert_allowed_decipheronly=True if 'decipher_only' in cert.key_usage_value.native else False,
+                           cert_signaturealgorithm=cert.signature_algo,
+                           cert_algorithm=cert.public_key.algorithm,
+                           cert_algorthm_bit_size=cert.public_key.bit_size
+                           )
 
 db = MysqlDB()
 
