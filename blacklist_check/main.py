@@ -5,7 +5,7 @@ import hashlib
 from datetime import datetime, timedelta
 import json
 import sys
-import subprocess
+import re
 
 sys.path.append('..')
 from collector import database_access
@@ -46,15 +46,31 @@ domains = db.get_domains(newest=newest, oldest=oldest)
 # our first item is the rowcount
 domaincount = next(domains)
 
-print('Checking {} domains against blacklists...'.format(domaincount))
-
 iteration = 0
 
 bl_files = Path(config.DNSBL_DIRECTORY).glob('**/*')
 
+dnsbl = dict()
+
+# https://gist.github.com/neu5ron/66078f804f16f9bda828
+domain_regex = r'(?:(?:[\da-zA-Z])(?:[_\w-]{,62})\.){,127}(?:(?:[\da-zA-Z])[_\w-]{,61})?(?:[\da-zA-Z]\.(?:(?:xn\-\-[a-zA-Z\d]+)|(?:[a-zA-Z\d]{2,})))'
+valid_domain_name_regex = re.compile(domain_regex, re.IGNORECASE)
+
+print('Loading DNSBL data...')
+for file in bl_files:
+    text = file.read_text(encoding='utf-8', errors='ignore')
+    domains_bl = valid_domain_name_regex.finditer(text)
+    for domain in domains_bl:
+        if domain.group(0) in dnsbl:
+            dnsbl[domain.group(0)] += 1
+        else:
+            dnsbl[domain.group(0)] = 1
+
+print('Checking {} domains against blacklists...'.format(domaincount))
 for domain in domains:
     iteration += 1
-    print('\rProgress: {0:.3g}%'.format(iteration/int(domaincount)), end='')
+    if iteration % 101 == 0:
+        print('\rProgress: {:05.3f}%'.format(iteration/int(domaincount)), end='')
     domain_name = domain['name'].replace('*.', '')
     blacklists = 0
     # print('Safebrowsing check started for {} ({})'.format(domain_name, str(blacklists)))
@@ -65,12 +81,9 @@ for domain in domains:
     if th is not None:
         blacklists += 1
     # print('DNSBL check started for {} ({})'.format(domain_name, str(blacklists)))
-    for f in bl_files:
-        if f.is_file():
-            rc = subprocess.call(['grep', domain_name, str(f)])
-            if rc != 1:
-                blacklists += 1
+    if domain_name in dnsbl:
+        blacklists += dnsbl[domain_name]
     if blacklists > 0:
-        print('Domain {} found in {} blacklists - updating database.'.format(domain_name, str(blacklists)))
+        print('\nDomain {} found in {} blacklists - updating database.'.format(domain_name, str(blacklists)))
         db.update_blacklists(domain=domain['name'], count=blacklists)
 print('Blacklist data update complete!')
