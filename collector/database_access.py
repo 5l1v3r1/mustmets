@@ -1,6 +1,20 @@
 import pymysql
 import pymysql.cursors
-import config
+import json
+from pathlib import Path
+
+p = Path(__file__).parents[0]
+p = Path(p, 'collector.json')
+
+with p.open('r') as configfile:
+    config = json.load(configfile)
+
+
+class Bunch(object):
+  def __init__(self, adict):
+    self.__dict__.update(adict)
+
+config = Bunch(config)
 
 
 class MysqlDB:
@@ -149,3 +163,21 @@ INSERT INTO `certificate` (
             sql = 'INSERT INTO `domain_in_certificate` (`domain_id`, `certificate_id`) VALUES (%s, %s);'
             cur = self.query(sql, (domain_id, cert_id))
             cur.close()
+
+    def get_domains(self, newest=None, oldest=None):
+        sql = 'SELECT `name` FROM `domain` WHERE `first_seen` > %s AND `first_seen` < %s;'
+        params = (oldest, newest)
+        cur = self.query(sql, params)
+        yield cur.rowcount
+        row = ""
+        while row is not None:
+            row = cur.fetchone()
+            yield row
+        cur.close()
+
+    def update_blacklists(self, domain=None, count=None):
+        sql = 'UPDATE `domain` SET `blacklists` = %s WHERE `name` = %s;'
+        params = (count, domain)
+        cur = self.query(sql, params)
+        cur.close()
+
