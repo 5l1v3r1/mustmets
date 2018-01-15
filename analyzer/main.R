@@ -1,5 +1,5 @@
 # Load our lexicon
-lexicon <- c("apple", "login")
+lexicon <- c("apple", "login", "verify", "account", "paypal", "secure", "crack", "love", "virus", "free", "fuck", "alert", "help", "movies", "unlock", "outlook", "update", "stream", "safety", "windows", "porn", "verification")
 
 # Load our data from MySQL
 install.packages("RMariaDB")
@@ -16,20 +16,31 @@ res <- dbSendQuery(con, "select
                    inner join (SELECT DIC.domain_id AS DID, COUNT(DIC.domain_id) AS count_seen
                    FROM domain_in_certificate DIC GROUP BY DIC.domain_id) DT
                    on DT.DID = D.id
-                   WHERE D.id < 150000 AND LENGTH(REVERSE(LEFT(REVERSE(D.name), INSTR(REVERSE(D.name), \".\")))) > 2
+                   WHERE D.id < 300000 AND LENGTH(REVERSE(LEFT(REVERSE(D.name), INSTR(REVERSE(D.name), \".\")))) > 2
                    ;")
 data <- dbFetch(res, n=-1)
 dbHasCompleted(res)
 dbClearResult(res)
 dbDisconnect(con)
 
+# Remove NA
 data[is.na(data)] <- 0
 
 # Let's start transforming our data, first convert tlds to binary dimensions
-tlds <- unique(data$tld)
+#tlds <- unique(data$tld)
+#for (tld in tlds) {
+#  data[tld] <- vapply(data$tld, `==`, integer(1), tld)
+#}
+
+# Get top25 TLD-s, rest are "other"
+tlds <- names(head(sort(table(data$tld),decreasing=TRUE), n = 25))
+
 for (tld in tlds) {
   data[tld] <- vapply(data$tld, `==`, integer(1), tld)
 }
+
+data["tld_other"] <- rowSums(data[tlds])
+data["tld_other"] <- vapply(data$tld_other, `==`, integer(1), 0)
 
 # Drop the original tld column
 data<-within(data, rm("tld"))
@@ -107,29 +118,31 @@ for (word in lexicon) {
   data[word] <- vapply(data$name, e_agrep, integer(1), word)
 }
 
-# With our enhanced data, train a naive bayes classifier
+# remove the name column from training data
+row.names(data) <- paste(row.names(data), data$name, sep=".")
+data <- within(data, rm("name"))
+# Fix column names
+names(data) <- make.names(names(data))
+data[] <- lapply(data, factor)
+
+sample <- sample(1:nrow(data), 280000, replace=FALSE)
+
+# We have a very unbalanced class distribution, let's use undersampling to improve it
+library("ROSE")
+training <- ovun.sample(as.formula("blacklists ~ ."), data=data, method="under", p=0.1)$data
+training <- data[sample,]
+
+# Naive Bayes
 library("bnlearn")
-
-data2 <- within(data, rm("name"))
-data2[] <- lapply(data2, factor)
-
-sample <- sample(1:nrow(data), 120000, replace=FALSE)
-training <- data2[sample,]
-#training <- within(training, rm("blacklists"))
-#training <- within(training, rm("name"))
-#training[] <- lapply(training, factor)
-# drop factors with only one level
-#training <- training[, sapply(training, nlevels) > 1]
-test <- data2[-sample,]
-#test <- within(test, rm("blacklists"))
-#test <- within(test, rm("name"))
-#test[] <- lapply(test, factor)
-# drop factors with only one level
-#test <- test[, sapply(test, nlevels) > 1]
-
 system.time( bn <- naive.bayes(training, "blacklists") )
 system.time( fitted <- bn.fit(bn, training))
-system.time( pred <- predict(fitted, test) )
-table("Predictions"= pred,  "Actual" = test[,"blacklists"])
+system.time( pred <- predict(fitted, data[-sample,]) )
+table("Predictions"= pred,  "Actual" = data[-sample,"blacklists"])
 
-# Use the trained model to predict new domains (PROFIT!) :)
+library("randomForest")
+system.time ( rf <- randomForest(as.formula("blacklists ~ ."), data=training, 
+                                 importance=TRUE, ntree=200, do.trace=TRUE) )
+
+# Use the trained model to predict new domains'
+system.time( rf.pred <- predict(rf, data[-sample,]))
+table("Predictions"= rf.pred,  "Actual" = data[-sample,"blacklists"])
