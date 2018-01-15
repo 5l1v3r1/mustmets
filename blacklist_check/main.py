@@ -39,7 +39,7 @@ if update:
 print('Getting domain data from MySQL...')
 db = database_access.MysqlDB()
 now = datetime.now()
-newest = now - timedelta(days=0)
+newest = now - timedelta(days=1)
 oldest = now - timedelta(days=9)
 domains = db.get_domains(newest=newest, oldest=oldest)
 
@@ -68,19 +68,24 @@ for file in bl_files:
 
 print('Checking {} domains against blacklists...'.format(domaincount))
 for domain in domains:
+    if domain is None:
+        break
     iteration += 1
     if iteration % 101 == 0:
-        print('\rProgress: {:05.3f}%'.format(iteration/int(domaincount)), end='')
+        print('\rProgress: {:05.3f}%'.format((iteration/int(domaincount))*100), end='')
     domain_name = domain['name'].replace('*.', '')
     blacklists = 0
     # print('Safebrowsing check started for {} ({})'.format(domain_name, str(blacklists)))
-    th = sbl.lookup_url('https://' + domain_name + '/')
-    if th is not None:
-        blacklists += 1
-    th = sbl.lookup_url('http://' + domain_name + '/')
-    if th is not None:
-        blacklists += 1
-    # print('DNSBL check started for {} ({})'.format(domain_name, str(blacklists)))
+    try:
+        th = sbl.lookup_url('https://' + domain_name + '/')
+        if th is not None:
+            blacklists += 1
+    except:
+        print('Error retrieving safebrowsing data for  {}'.format(domain_name))
+    # th = sbl.lookup_url('http://' + domain_name + '/')
+    # if th is not None:
+    #     blacklists += 1
+    # # print('DNSBL check started for {} ({})'.format(domain_name, str(blacklists)))
     if domain_name in dnsbl:
         blacklists += dnsbl[domain_name]
     if blacklists > 0:
